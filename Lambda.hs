@@ -41,7 +41,6 @@ freeVars (Macro _) = []
 
 -- 1.3.
 newVar :: [String] -> String
--- newVar = undefined
 newVar xs = head [v | v <- candidates, v `notElem` xs]
   where
     candidates = concat [stringOfLen n | n <- [1 ..]]
@@ -62,27 +61,42 @@ reduce :: String -> Lambda -> Lambda -> Lambda
 reduce x (Var v) e2
   | v == x = e2
   | otherwise = Var v
+reduce _ (Macro m) _ = Macro m
 reduce x (App a b) e2 = App (reduce x a e2) (reduce x b e2)
 reduce x abs1@(Abs v body) e2
   | v == x = abs1
   | v `notElem` freeVars e2 = Abs v (reduce x body e2)
   | otherwise =
       let fresh = newVar (freeVars body ++ freeVars e2 ++ [x])
-          body' = reduce v body (Var fresh)
-       in Abs fresh (reduce x body' e2)
-reduce _ (Macro m) _ = Macro m
+          bodyFresh = reduce v body (Var fresh)
+       in Abs fresh (reduce x bodyFresh e2)
 
 -- 1.6.
 normalStep :: Lambda -> Lambda
-normalStep = undefined
+-- normalStep = undefined
+normalStep (App (Abs x body) e2) = reduce x body e2
+normalStep (App e1 e2)
+  | not (isNormalForm e1) = App (normalStep e1) e2
+  | otherwise = App e1 (normalStep e2)
+normalStep (Abs x e) = Abs x (normalStep e)
+normalStep e = e
 
 -- 1.7.
 applicativeStep :: Lambda -> Lambda
-applicativeStep = undefined
+applicativeStep (Abs x e) = Abs x (applicativeStep e)
+applicativeStep (App e1 e2)
+  | not (isNormalForm e1) = App (applicativeStep e1) e2
+  | not (isNormalForm e2) = App e1 (applicativeStep e2)
+  | otherwise = case e1 of
+      Abs x body -> reduce x body e2
+      _ -> App e1 e2
+applicativeStep e = e
 
 -- 1.8.
 simplify :: (Lambda -> Lambda) -> Lambda -> [Lambda]
-simplify = undefined
+simplify step e
+  | isNormalForm e = [e]
+  | otherwise = e : simplify step (step e)
 
 normal :: Lambda -> [Lambda]
 normal = simplify normalStep
